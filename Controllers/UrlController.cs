@@ -1,7 +1,7 @@
-﻿using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.AspNetCore.Mvc;
+using urlShortener.Helpers;
 using urlShortener.Models;
+using urlShortener.Services;
 
 namespace urlShortener.Controllers
 {
@@ -9,38 +9,57 @@ namespace urlShortener.Controllers
     [ApiController]
     public class UrlController : ControllerBase
     {
-       
-        private readonly ApplicationDbContext _context;
 
-        public UrlController(ApplicationDbContext context)
-        {
-            _context = context;
-        }
-        
+        private readonly IUrlShortenerService _service;
 
-        [HttpGet]
-        public async Task<IActionResult> Get()
+        public UrlController(IUrlShortenerService service)
         {
-            try
-            {
-                var urlList = await _context.Url.ToListAsync();
-                return Ok(urlList);
-            }
-            catch (Exception ex)
-            {
-                return BadRequest(ex.Message);
-            }
+            _service = service;
         }
 
         [HttpPost]
-        [ValidateAntiForgeryToken]
-        public async Task<IActionResult> Create([FromBody] UrlDetail oUrl)
+        public async Task<IActionResult> Post(UrlDetail originalUrl)
         {
             try
             {
-                _context.Add(oUrl);
-                await _context.SaveChangesAsync();
-                return Ok(oUrl);
+                if(originalUrl == null)
+                {
+                    return BadRequest();
+                }
+
+                UrlDetail oUrl = await _service.GetByOriginalUrl(originalUrl.OriginalUrl);
+
+                if (oUrl == null)
+                {
+                    oUrl = originalUrl;
+                    oUrl.Id = 0;
+                    int id = await _service.Save(oUrl);
+                
+                    return Ok(UrlShortenerHelper.Encode(id));
+                }
+                return Ok(UrlShortenerHelper.Encode(oUrl.Id));
+
+            } catch (Exception ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
+
+        [HttpGet]
+        public async Task<IActionResult> Get(string code)
+        {
+            try
+            {
+                if(code == null)
+                {
+                    return BadRequest(new {message = "no short url provided"});
+                }
+                UrlDetail oUrl = await _service.GetByCode(code);
+                if(oUrl == null)
+                {
+                    return BadRequest(new { message = "invalid code" });
+                }
+                return Ok(oUrl.OriginalUrl);
             }
             catch (Exception ex)
             {
@@ -48,6 +67,6 @@ namespace urlShortener.Controllers
             }
 
         }
-     
-    }
+
+    }                   
 }
